@@ -2,7 +2,7 @@
 *.log
 
 # User-specific data
-/devices.json
+/config.json
 
 # sbt specific
 .cache/
@@ -15,3 +15,4 @@ src_managed/
 project/boot/
 project/plugins/project/
 src/test/
+config.json

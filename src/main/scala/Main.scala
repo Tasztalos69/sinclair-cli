@@ -1,13 +1,16 @@
-import java.io.{File, PrintWriter}
+import java.io.{File, FileNotFoundException, PrintWriter}
 import java.net.{DatagramPacket, DatagramSocket, InetSocketAddress, SocketTimeoutException}
 
-import scala.util.control.Breaks._
-import org.rogach.scallop._
-import spray.json._
-import spray.json.DefaultJsonProtocol.{JsValueFormat, StringJsonFormat, arrayFormat, listFormat, mapFormat}
 import javax.crypto.Cipher
-import org.apache.commons.codec.binary.Base64
 import javax.crypto.spec.SecretKeySpec
+import org.apache.commons.codec.binary.Base64
+import org.rogach.scallop._
+import spray.json.DefaultJsonProtocol._
+import spray.json._
+
+import scala.io.Source
+import scala.io.StdIn.readLine
+import scala.util.control.Breaks._
 
 // CLI Syntax constructor
 
@@ -133,7 +136,27 @@ object Main {
 
   def main(args: Array[String]): Unit = {
     val conf = new Conf(testArgs)
+    var config: JsObject = null
+    try {
+      val src = Source.fromFile("config.json")
+      config = JsonParser(src.getLines.mkString).asJsObject
+      src.close()
+    } catch {
+      case _: FileNotFoundException =>
+        val pw = new PrintWriter(new File("config.json"))
+        pw.write("{}");
+        pw.close()
+    }
+
     if (conf.subcommand.contains(conf.search)) {
+      if (config.fields.contains("devices")) {
+        print("Warning: there are previously bound devices. Do you want to overwrite them? (y/N) ")
+        val resp = readLine()
+        if (resp.toUpperCase != "Y" && resp.toUpperCase != "YES") {
+          println("Aborting.")
+          System.exit(0)
+        }
+      }
       println("Searching...")
       val msg = """{"t":"scan"}""".getBytes()
       val addr = new InetSocketAddress("192.168.0.255", 7000)
@@ -169,15 +192,22 @@ object Main {
           }
         }
       }
+      if (results.length == 0) {
+        System.exit(0)
+      }
       var binds: Array[Map[String, String]] = Array()
-      for (r <- results if results.length > 0) {
+      for (r <- results) {
         binds = binds :+ bind(r)
       }
       if (binds.length == 1) {
+        println("Setting the device as default...")
         binds(0) = binds(0) + ("default" -> "true")
+      } else {
+        println("Found multiple devices. To use the shorthand command (without specifying a device), use: scli config default <id>")
       }
-      val pw = new PrintWriter(new File("devices.json"))
-      pw.write(binds.toJson.prettyPrint);
+      val pw = new PrintWriter(new File("config.json"))
+      config = JsObject(config.fields + ("devices" -> binds.toJson))
+      pw.write(config.prettyPrint)
       pw.close()
       println(s"Saved ${binds.length} devices.")
 
