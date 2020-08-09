@@ -1,9 +1,10 @@
+import java.io.{File, PrintWriter}
 import java.net.{DatagramPacket, DatagramSocket, InetSocketAddress, SocketTimeoutException}
 
 import scala.util.control.Breaks._
 import org.rogach.scallop._
 import spray.json._
-import spray.json.DefaultJsonProtocol.{JsValueFormat, StringJsonFormat, listFormat, mapFormat}
+import spray.json.DefaultJsonProtocol.{JsValueFormat, StringJsonFormat, arrayFormat, listFormat, mapFormat}
 import javax.crypto.Cipher
 import org.apache.commons.codec.binary.Base64
 import javax.crypto.spec.SecretKeySpec
@@ -103,7 +104,7 @@ object Main {
     recv
   }
 
-  def bind(res: SearchResult): Any = {
+  def bind(res: SearchResult): Map[String, String] = {
     println(s"Binding to ${res.name} at ${res.ip}...")
     val pack = s"""{"mac":${res.id},"t":"bind","uid":0}"""
     val pack_encrypted = encrypt_generic(pack)
@@ -116,10 +117,15 @@ object Main {
       val jsonDecrypted = JsonParser(new String(decrypted, 0, decrypted.length))
       val mapDecrypted = jsonDecrypted.convertTo[Map[String, JsValue]]
       if (mapDecrypted("t").toString == """"bindok"""") {
+        println("Bind successful.")
         val key = mapDecrypted("key")
-        val data = Map[String, String]("id" -> res.id.stripQ, "ip" -> res.ip, "key" -> key.toString.stripQ)
+        val data = Map[String, String]("id" -> res.id.stripQ, "ip" -> res.ip, "key" -> key.toString.stripQ, "default" -> "false")
         data
+      } else {
+        Map()
       }
+    } else {
+      Map()
     }
   }
 
@@ -163,9 +169,17 @@ object Main {
           }
         }
       }
-      for (r <- results) {
-        println(bind(r))
+      var binds: Array[Map[String, String]] = Array()
+      for (r <- results if results.length > 0) {
+        binds = binds :+ bind(r)
       }
+      if (binds.length == 1) {
+        binds(0) = binds(0) + ("default" -> "true")
+      }
+      val pw = new PrintWriter(new File("devices.json"))
+      pw.write(binds.toJson.prettyPrint);
+      pw.close()
+      println(s"Saved ${binds.length} devices.")
 
     }
     if (conf.subcommand.contains(conf.get)) println("get supplied")

@@ -1,6 +1,9 @@
 *.class
 *.log
 
+# User-specific data
+/devices.json
+
 # sbt specific
 .cache/
 .history/
@@ -11,3 +14,4 @@ lib_managed/
 src_managed/
 project/boot/
 project/plugins/project/
+src/test/
