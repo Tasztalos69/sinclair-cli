@@ -8,6 +8,7 @@ import org.rogach.scallop._
 import spray.json.DefaultJsonProtocol._
 import spray.json._
 
+import scala.Console._
 import scala.io.Source
 import scala.io.StdIn.readLine
 import scala.jdk.CollectionConverters._
@@ -17,13 +18,24 @@ import scala.util.control.Breaks._
 
 class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
   version("v1.0.0 | MIT | Kiss Benedek Máté")
-  val search = new Subcommand("search", "s") {
 
-  }
+  val search = new Subcommand("search", "s")
   val ac = new Subcommand("ac") {
     val prop = trailArg[String]("property", "The name of the requested key.", required = false)
     val value = trailArg[String]("value", "The value to set the AC to.", required = false)
   }
+
+  val config = new Subcommand("config", "c") {
+    val entry = trailArg[String]("entry", "The name of the config entry.", required = false)
+    val value = trailArg[String]("value", "The value to set the config entry to.", required = false)
+  }
+  val devices = new Subcommand("devices", "d") {
+    val command = trailArg[String]("entry", "The name of the devices command.", required = true)
+    val value = trailArg[String]("value", "The value to set the devices entry to.", required = false)
+  }
+  val help = opt[Boolean](hidden = true)
+  addSubcommand(config)
+  addSubcommand(devices)
   addSubcommand(search)
   addSubcommand(ac)
   verify()
@@ -31,10 +43,10 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
 
 // Helper classes
 
-class SearchResult(var ip: String = "", var port: Int = 0, var id: String = "", var name: String = "Unknown")
+class SearchResult(var incId: Int, var ip: String = "", var port: Int = 0, var id: String = "", var name: String = "Unknown")
 
 object SearchResult {
-  def apply(ip: String, port: Int, id: String, name: String): SearchResult = new SearchResult(ip, port, id, name)
+  def apply(incId: Int, ip: String, port: Int, id: String, name: String): SearchResult = new SearchResult(incId, ip, port, id, name)
 }
 
 class BetterString(val s: String) {
@@ -139,7 +151,7 @@ object Main {
       if (mapDecrypted("t").toString == """"bindok"""") {
         println("Bind successful.")
         val key = mapDecrypted("key")
-        val data = Map[String, String]("id" -> res.id.stripQ, "ip" -> res.ip, "key" -> key.toString.stripQ, "default" -> "false")
+        val data = Map[String, String]("incId" -> res.incId.toString, "id" -> res.id.stripQ, "ip" -> res.ip, "key" -> key.toString.stripQ, "default" -> "false")
         data
       } else {
         Map()
@@ -147,6 +159,11 @@ object Main {
     } else {
       Map()
     }
+  }
+
+  def printErr(in: String): Unit = {
+    println(s"${RED}Error:$RESET $in")
+    System.exit(1)
   }
 
   // CLI functions
@@ -185,7 +202,7 @@ object Main {
     s.send(p)
 
     var results: Array[SearchResult] = Array()
-
+    var incId = 1
     breakable {
       while (true) {
         val in = Array.fill[Byte](1024)(0)
@@ -200,7 +217,8 @@ object Main {
             val decryptedMap = jsonDecrypted.convertTo[Map[String, JsValue]]
             var addr = recv.getAddress.toString
             if (addr.startsWith("/")) addr = addr.substring(1)
-            results = results :+ SearchResult(addr, recv.getPort, decryptedMap("cid").toString, if (decryptedMap.contains("name")) decryptedMap("name").toString else "Unknown")
+            results = results :+ SearchResult(incId, addr, recv.getPort, decryptedMap("cid").toString, if (decryptedMap.contains("name")) decryptedMap("name").toString else "Unknown")
+            incId = incId + 1
           }
         } catch {
           case _: SocketTimeoutException =>
@@ -220,7 +238,7 @@ object Main {
       println("Setting the device as default...")
       binds(0) = binds(0) + ("default" -> "true")
     } else {
-      println("Found multiple devices. To use the shorthand command (without specifying a device), use: scli config default <id>")
+      println(s"${YELLOW}Warning:$RESET Found multiple devices. To use the shorthand command (without specifying a device), use: scli config default <id>")
     }
     val pw = new PrintWriter(new File("config.json"))
     val newConfig = JsObject(config.fields + ("devices" -> binds.toJson))
@@ -234,6 +252,13 @@ object Main {
     case "power" => "Pow"
     case "mode" => "Mod"
     case "temp" => "SetTem"
+    case "temp-unit" => "TemUn"
+    case "fan" => "WdSpd"
+    case "turbo" => "Tur"
+    case "light" => "Lig"
+    case "air" => "Air"
+    case "health" => "Health"
+    case "test" => "RoomWid"
   }
 
   def getValue(value: ScallopOption[String]): Int = value.getOrElse("") match {
@@ -244,6 +269,11 @@ object Main {
     case "dry" => 2
     case "fan" => 3
     case "heat" => 4
+    case "celsius" => 0
+    case "fahrenheit" => 1
+    case "low" => 1
+    case "medium" => 3
+    case "high" => 5
   }
 
   def ac(config: JsObject, prop: ScallopOption[String], value: ScallopOption[String]): Unit = {
@@ -254,7 +284,16 @@ object Main {
     var pack: String = ""
     var numValue: Int = -1
     if (setMode) {
-      numValue = getValue(value)
+      if (param == "SetTem") {
+        try {
+          numValue = value.getOrElse("0").toInt
+        } catch {
+          case _: NumberFormatException =>
+            printErr("Enter a number for temperature.")
+        }
+      } else {
+        numValue = getValue(value)
+      }
       pack = s"""{"opt":["$param"],"p":[$numValue],"t":"cmd"}"""
     } else {
       pack = s"""{"cols":["$param"],"mac":"${device("id")}","t":"status"}"""
@@ -273,16 +312,78 @@ object Main {
     }
   }
 
+  def config(currentConfig: JsObject, entryOpt: ScallopOption[String], value: ScallopOption[String]): Unit = {
+    val allowedEntries: Array[String] = Array("broadcastAddress")
+    var setMode: Boolean = false
+    val entry = entryOpt.getOrElse("")
+    if (!value.getOrElse("").isEmpty) setMode = true
+    if (entry == "") {
+      val configMap = currentConfig.convertTo[Map[String, JsValue]]
+      println(configMap.map {
+        case (key, value: JsString) => s"$key -> ${value.prettyPrint.stripQ}"
+        case (_, _: JsArray) => ""
+      }.mkString("\n"))
+      System.exit(0)
+    }
+    if (!allowedEntries.contains(entry)) {
+      printErr(s"$entry is not a valid config entry.")
+    }
+
+    if (setMode) {
+      val pw = new PrintWriter(new File("config.json"))
+      val newConfig = JsObject(currentConfig.fields + (entry -> value.getOrElse("").toJson))
+      pw.write(newConfig.prettyPrint)
+      pw.close()
+      println()
+    } else {
+      println(currentConfig.fields(entry).prettyPrint.stripQ)
+    }
+  }
+
+  def devices(currentConfig: JsObject, commandOpt: ScallopOption[String], valueOpt: ScallopOption[String]): Unit = {
+    val devices = currentConfig.fields("devices").convertTo[Array[Map[String, String]]]
+    val command = commandOpt.getOrElse("")
+    val value = valueOpt.getOrElse("")
+    if (command == "list") {
+      devices.foreach(d => {
+        println(s"ID: ${d("incId")}\n------------------")
+        println(d filter (e => e._1 != "incId") map {
+          case (key, value) => s"$key -> $value"
+        } mkString "\n")
+        println()
+      })
+    }
+    if (command == "default") {
+      if (value == "") printErr("Specify a device ID.")
+      val selected = devices filter (e => e("incId") == value)
+      if (selected.length == 0) printErr("Device not found.")
+
+      val pw = new PrintWriter(new File("config.json"))
+      val newConfig = JsObject(currentConfig.fields + ("devices" -> devices.map(
+        d => {
+          if (d("incId") == value) {
+            d + ("default" -> "true")
+          } else {
+            d + ("default" -> "false")
+          }
+        }
+      ).toJson))
+      pw.write(newConfig.prettyPrint)
+      pw.close()
+      println(s"Set device with ID $value to default.")
+    }
+  }
+
   // Main
 
   val testArgs: Array[String] = Array("ac", "power", "off")
 
   def main(args: Array[String]): Unit = {
     val conf = new Conf(testArgs)
-    var config: JsObject = null
+    var configObject: JsObject = null
     try {
       val src = Source.fromFile("config.json")
-      config = JsonParser(src.getLines.mkString).asJsObject
+      configObject = JsonParser(src.getLines.mkString).asJsObject
       src.close()
     } catch {
       case _: FileNotFoundException =>
@@ -291,8 +392,12 @@ object Main {
         pw.close()
     }
 
-    if (conf.subcommand.contains(conf.search)) search(config)
+    if (conf.subcommand.contains(conf.search)) search(configObject)
 
-    if (conf.subcommand.contains(conf.ac)) ac(config, conf.ac.prop, conf.ac.value)
+    if (conf.subcommand.contains(conf.ac)) ac(configObject, conf.ac.prop, conf.ac.value)
+
+    if (conf.subcommand.contains(conf.config)) config(configObject, conf.config.entry, conf.config.value)
+
+    if (conf.subcommand.contains(conf.devices)) devices(configObject, conf.devices.command, conf.devices.value)
   }
 }
