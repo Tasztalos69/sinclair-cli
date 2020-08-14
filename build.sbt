@@ -6,6 +6,11 @@ version := "0.1"
 
 scalaVersion := "2.13.3"
 
+scalacOptions ++= Seq(
+  "-deprecation",
+  "-feature"
+)
+
 libraryDependencies ++= Seq(
   "org.rogach" %% "scallop" % "3.5.0",
   "io.spray" %% "spray-json" % "1.3.5",

@@ -12,28 +12,86 @@ import scala.Console._
 import scala.io.Source
 import scala.io.StdIn.readLine
 import scala.jdk.CollectionConverters._
+import scala.language.{implicitConversions, reflectiveCalls}
 import scala.util.control.Breaks._
 
 // CLI Syntax constructor
 
 class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
-  version("v1.0.0 | MIT | Kiss Benedek Máté")
+  version(s"${RED}Sinclair CLI v1.0.0 $RESET\n${GREEN}MIT $RESET|$YELLOW Kiss Benedek Máté$RESET")
+  banner(s"\n$BOLD${WHITE}Usage:$RESET$CYAN scli <command> [<args>]$RESET")
+  footer(s"Use$CYAN scli <command> --help$RESET for additional help.")
 
-  val search = new Subcommand("search", "s")
-  val ac = new Subcommand("ac") {
-    val prop = trailArg[String]("property", "The name of the requested key.", required = false)
-    val value = trailArg[String]("value", "The value to set the AC to.", required = false)
+  helpFormatter = new ScallopHelpFormatter {
+    override def formatHelp(s: Scallop, subcommandPrefix: String): String =
+      s"""
+         |$BOLD${WHITE}COMMANDS:$RESET
+         |   command   short    args
+         |   ${YELLOW}search    ${GREEN}s        $CYAN[-b]
+         |   ${YELLOW}ac                 $CYAN[<property>] [<value>] [-d]
+         |   ${YELLOW}devices   ${GREEN}d        $CYAN<command> [<value>]
+         |   ${YELLOW}config    ${GREEN}c        $CYAN[<entry>] [<value>]$RESET
+         |""".stripMargin
+
   }
+
+  val search = new Subcommand("search", "s") {
+    val broadcastAddress = opt[String]("broadcastAddress", 'b', required = false)
+  }
+  val ac = new Subcommand("ac") {
+    val device = opt[String]("device", 'd', required = false)
+    val prop = trailArg[String]("property", required = false)
+    val value = trailArg[String]("value", required = false)
+    helpFormatter = new ScallopHelpFormatter {
+      override def formatHelp(s: Scallop, subcommandPrefix: String): String =
+        s"""$BOLD${WHITE}Command:$RESET$CYAN ac
+           |
+           |$BOLD${WHITE}Description:$RESET Set properties of the Air Conditioner.
+           |If no property supplied, it prints the status of the AC.
+           |
+           |$BOLD${WHITE}Arguments:$RESET
+           |  ${CYAN}property$RESET
+           |  Get a specific property of the AC.
+           |  If a value is supplied, set the property to the value.
+           |
+           |  ${CYAN}value$RESET
+           |  Set a property to a value.
+           |  Check available properties and values below.
+           |
+           |  $YELLOW-d --device <ID>$RESET
+           |  Specify a device ID.
+           |  You can see the available IDs by typing$CYAN scli devices list$RESET.
+           |
+           |$BOLD${WHITE}Properties:$RESET
+           |  ${GREEN}power       ${YELLOW}on | off
+           |  ${GREEN}mode        ${YELLOW}auto | cool | dry | fan | heat
+           |  ${GREEN}temp        ${YELLOW}<degree>
+           |  ${GREEN}temp-unit   ${YELLOW}celsius | fahrenheit
+           |  ${GREEN}fan         ${YELLOW}auto | low | medium | height
+           |  ${GREEN}turbo       ${YELLOW}on | off
+           |  ${GREEN}light       ${YELLOW}on | off
+           |  ${GREEN}air         ${YELLOW}on | off
+           |  ${GREEN}health      ${YELLOW}on | off
+           |""".stripMargin
+    }
+  }
+
 
   val config = new Subcommand("config", "c") {
-    val entry = trailArg[String]("entry", "The name of the config entry.", required = false)
-    val value = trailArg[String]("value", "The value to set the config entry to.", required = false)
+    val entry = trailArg[String]("entry", required = false)
+    val value = trailArg[String]("value", required = false)
+    helpFormatter = new ScallopHelpFormatter {
+      override def formatHelp(s: Scallop, subcommandPrefix: String): String =
+        """
+          |
+          |""".stripMargin
+    }
   }
+
   val devices = new Subcommand("devices", "d") {
-    val command = trailArg[String]("entry", "The name of the devices command.", required = true)
-    val value = trailArg[String]("value", "The value to set the devices entry to.", required = false)
+    val command = trailArg[String]("entry", required = true)
+    val value = trailArg[String]("value", required = false)
   }
-  val help = opt[Boolean](hidden = true)
   addSubcommand(config)
   addSubcommand(devices)
   addSubcommand(search)
@@ -322,6 +380,7 @@ object Main {
       println(configMap.map {
         case (key, value: JsString) => s"$key -> ${value.prettyPrint.stripQ}"
         case (_, _: JsArray) => ""
+        case (k, v) => s"$k -> $v"
       }.mkString("\n"))
       System.exit(0)
     }
@@ -383,7 +442,7 @@ object Main {
     var configObject: JsObject = null
     try {
       val src = Source.fromFile("config.json")
-      configObject = JsonParser(src.getLines.mkString).asJsObject
+      configObject = JsonParser(src.getLines().mkString).asJsObject
       src.close()
     } catch {
       case _: FileNotFoundException =>
