@@ -25,7 +25,7 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
   helpFormatter = new ScallopHelpFormatter {
     override def formatHelp(s: Scallop, subcommandPrefix: String): String =
       s"""
-         |$BOLD${WHITE}COMMANDS:$RESET
+         |$BOLD${WHITE}Commands:$RESET
          |   command   short    args
          |   ${YELLOW}search    ${GREEN}s        $CYAN[-b]
          |   ${YELLOW}ac                 $CYAN[<property>] [<value>] [-d]
@@ -36,14 +36,27 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
   }
 
   val search = new Subcommand("search", "s") {
-    val broadcastAddress = opt[String]("broadcastAddress", 'b', required = false)
+    val broadcastAddress = opt[String]("broadcast-address", 'b', required = false) // TODO
+    helpFormatter = new ScallopHelpFormatter {
+      override def formatHelp(s: Scallop, subcommandPrefix: String): String =
+        s"""$BOLD${WHITE}Command:$RESET$CYAN search
+           |
+           |$BOLD${WHITE}Description:$RESET Search for ACs on the network.
+           |
+           |$BOLD${WHITE}Arguments:$RESET
+           |  $YELLOW-b --broadcast-address <ip>$RESET
+           |  Specify a broadcast address.
+           |  You can set a default broadcast address by typing$CYAN scli config broadcastAddress <ip>$RESET,
+           |  or you can set it to default, and the program will try to obtain the broadcast address.
+           |""".stripMargin
+    }
   }
   val ac = new Subcommand("ac") {
-    val device = opt[String]("device", 'd', required = false)
+    val device = opt[String]("device", 'd', required = false) // TODO
     val prop = trailArg[String]("property", required = false)
     val value = trailArg[String]("value", required = false)
     helpFormatter = new ScallopHelpFormatter {
-      override def formatHelp(s: Scallop, subcommandPrefix: String): String =
+      override def formatHelp(s: Scallop, subcommandPrefix: String): String = // TODO
         s"""$BOLD${WHITE}Command:$RESET$CYAN ac
            |
            |$BOLD${WHITE}Description:$RESET Set properties of the Air Conditioner.
@@ -71,7 +84,7 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
            |  ${GREEN}turbo       ${YELLOW}on | off
            |  ${GREEN}light       ${YELLOW}on | off
            |  ${GREEN}air         ${YELLOW}on | off
-           |  ${GREEN}health      ${YELLOW}on | off
+           |  ${GREEN}health      ${YELLOW}on | off$RESET
            |""".stripMargin
     }
   }
@@ -82,15 +95,47 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
     val value = trailArg[String]("value", required = false)
     helpFormatter = new ScallopHelpFormatter {
       override def formatHelp(s: Scallop, subcommandPrefix: String): String =
-        """
-          |
-          |""".stripMargin
+        s"""$BOLD${WHITE}Command:$RESET$CYAN config
+           |
+           |$BOLD${WHITE}Description:$RESET Set config entries to values.
+           |If no entry supplied, it prints the whole config.
+           |
+           |$BOLD${WHITE}Arguments:$RESET
+           |  ${CYAN}entry$RESET
+           |  Get a specific entry.
+           |  If a value is supplied, set the entry to the value.
+           |
+           |  ${CYAN}value$RESET
+           |  Set an entry to a value.
+           |  Check available entries and values below.
+           |
+           |$BOLD${WHITE}Entries:$RESET
+           |  ${GREEN}broadcastAddress       $YELLOW<ip> | default$RESET
+           |""".stripMargin
     }
   }
 
   val devices = new Subcommand("devices", "d") {
-    val command = trailArg[String]("entry", required = true)
+    val command = trailArg[String]("command", required = true)
     val value = trailArg[String]("value", required = false)
+    helpFormatter = new ScallopHelpFormatter {
+      override def formatHelp(s: Scallop, subcommandPrefix: String): String =
+        s"""$BOLD${WHITE}Command:$RESET$CYAN devices
+           |
+           |$BOLD${WHITE}Description:$RESET Manage previously fetched devices.
+           |
+           |$BOLD${WHITE}Arguments:$RESET
+           |  ${CYAN}command$RESET (required)
+           |  Execute a command. Check commands below.
+           |
+           |  ${CYAN}value$RESET
+           |  Use together with ${CYAN}command$RESET.
+           |
+           |  $BOLD${WHITE}Commands:$RESET
+           |  ${GREEN}list
+           |  ${GREEN}default   $YELLOW<ID>$RESET
+           |""".stripMargin
+    }
   }
   addSubcommand(config)
   addSubcommand(devices)
@@ -207,7 +252,7 @@ object Main {
       val jsonDecrypted = JsonParser(new String(decrypted, 0, decrypted.length))
       val mapDecrypted = jsonDecrypted.convertTo[Map[String, JsValue]]
       if (mapDecrypted("t").toString == """"bindok"""") {
-        println("Bind successful.")
+        println(s"${GREEN}Bind successful.$RESET")
         val key = mapDecrypted("key")
         val data = Map[String, String]("incId" -> res.incId.toString, "id" -> res.id.stripQ, "ip" -> res.ip, "key" -> key.toString.stripQ, "default" -> "false")
         data
@@ -228,30 +273,32 @@ object Main {
 
   def search(config: JsObject): Unit = {
     if (config.fields.contains("devices")) {
-      print("Warning: there are previously bound devices. Do you want to overwrite them? (y/N) ")
+      print(s"${YELLOW}Warning:$RESET there are previously bound devices. Do you want to overwrite them? (y/N) ")
       val resp = readLine()
       if (resp.toUpperCase != "Y" && resp.toUpperCase != "YES") {
         println("Aborting.")
         System.exit(0)
       }
     }
-    if (!config.fields.contains("broadcastAddress")) {
-      println("Searching for default broadcast address...\n(Alternatively, you can set the broadcast address with scli config broadcast <ip>)")
+    var bcAddr = "";
+    if (!config.fields.contains("broadcastAddress") || config.fields("broadcastAddress").prettyPrint.stripQ == "default") {
+      println(s"Searching for default broadcast address...\n(Alternatively, you can set the broadcast address with ${CYAN}scli config broadcast <ip>$RESET)\n")
       val bc = getDefaultBroadcast.getOrElse("")
       if (bc.isEmpty) {
-        println("Error: cannot get default broadcast address.")
+        printErr("cannot get default broadcast address.")
         System.exit(1)
       } else {
-        println(s"Found broadcast address $bc, and setting it as default.")
+        println(s"Found broadcast address $bc, and setting it as default.\n")
         val pw = new PrintWriter(new File("config.json"))
         val newConfig = JsObject(config.fields + ("broadcastAddress" -> bc.toJson))
         pw.write(newConfig.prettyPrint)
         pw.close()
+        bcAddr = bc
       }
     }
     println("Searching...")
     val msg = """{"t":"scan"}""".getBytes()
-    val addr = new InetSocketAddress(config.fields("broadcastAddress").toString.stripQ, 7000)
+    val addr = new InetSocketAddress(if (config.fields.contains("broadcastAddress")) config.fields("broadcastAddress").toString.stripQ else bcAddr, 7000)
     val p = new DatagramPacket(msg, msg.length, addr)
     val s = new DatagramSocket()
     s.setSoTimeout(5000)
@@ -302,7 +349,7 @@ object Main {
     val newConfig = JsObject(config.fields + ("devices" -> binds.toJson))
     pw.write(newConfig.prettyPrint)
     pw.close()
-    println(s"Saved ${binds.length} devices.")
+    println(s"${GREEN}Saved ${binds.length} devices.$RESET")
 
   }
 
@@ -366,7 +413,7 @@ object Main {
       val decrypted = decrypt(mapRecv("pack").toString().stripQ, device("key"))
       val jsonDecrypted = JsonParser(new String(decrypted, 0, decrypted.length))
       val mapDecrypted = jsonDecrypted.convertTo[Map[String, JsValue]]
-      println(mapDecrypted)
+      println(mapDecrypted) // TODO
     }
   }
 
@@ -435,10 +482,8 @@ object Main {
 
   // Main
 
-  val testArgs: Array[String] = Array("ac", "power", "off")
-
   def main(args: Array[String]): Unit = {
-    val conf = new Conf(testArgs)
+    val conf = new Conf(args.toIndexedSeq)
     var configObject: JsObject = null
     try {
       val src = Source.fromFile("config.json")
@@ -449,6 +494,7 @@ object Main {
         val pw = new PrintWriter(new File("config.json"))
         pw.write("{}")
         pw.close()
+        configObject = new JsObject(Map())
     }
 
     if (conf.subcommand.contains(conf.search)) search(configObject)
@@ -458,5 +504,7 @@ object Main {
     if (conf.subcommand.contains(conf.config)) config(configObject, conf.config.entry, conf.config.value)
 
     if (conf.subcommand.contains(conf.devices)) devices(configObject, conf.devices.command, conf.devices.value)
+    if (conf.subcommands.isEmpty) conf.printHelp()
+
   }
 }
