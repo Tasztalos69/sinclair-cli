@@ -57,7 +57,7 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
     val value = trailArg[String]("value", required = false)
     val device = opt[String]("device", required = false)
     helpFormatter = new ScallopHelpFormatter {
-      override def formatHelp(s: Scallop, subcommandPrefix: String): String = // TODO
+      override def formatHelp(s: Scallop, subcommandPrefix: String): String =
         s"""$BOLD${WHITE}Command:$RESET$CYAN ac
            |
            |$BOLD${WHITE}Description:$RESET Set properties of the Air Conditioner.
@@ -272,7 +272,8 @@ object Main {
 
   // CLI functions
 
-  def search(config: JsObject, ba: ScallopOption[String]): Unit = {
+  def search(configIn: JsObject, ba: ScallopOption[String]): Unit = {
+    var config = configIn
     if (config.fields.contains("devices")) {
       print(s"${YELLOW}Warning:$RESET there are previously bound devices. Do you want to overwrite them? (y/N) ")
       val resp = readLine()
@@ -295,8 +296,8 @@ object Main {
       } else {
         println(s"Found broadcast address $bc, and setting it as default.\n")
         val pw = new PrintWriter(new File("config.json"))
-        val newConfig = JsObject(config.fields + ("broadcastAddress" -> bc.toJson))
-        pw.write(newConfig.prettyPrint)
+        config = JsObject(config.fields + ("broadcastAddress" -> bc.toJson))
+        pw.write(config.prettyPrint)
         pw.close()
         bcAddr = bc
       }
@@ -351,8 +352,8 @@ object Main {
       println(s"${YELLOW}Warning:$RESET Found multiple devices. To use the shorthand command (without specifying a device), use:$CYAN scli config default <id>$RESET")
     }
     val pw = new PrintWriter(new File("config.json"))
-    val newConfig = JsObject(config.fields + ("devices" -> binds.toJson))
-    pw.write(newConfig.prettyPrint)
+    config = JsObject(config.fields + ("devices" -> binds.toJson))
+    pw.write(config.prettyPrint)
     pw.close()
     println(s"${GREEN}Saved ${binds.length} devices.$RESET")
 
@@ -495,7 +496,7 @@ object Main {
       val decrypted = decrypt(mapRecv("pack").toString().stripQ, device("key"))
       val jsonDecrypted = JsonParser(new String(decrypted, 0, decrypted.length))
       val mapDecrypted = jsonDecrypted.convertTo[Map[String, JsValue]]
-      println(mapDecrypted) // TODO
+      println(mapDecrypted) // TODO print output & error handling
     }
   }
 
@@ -509,7 +510,7 @@ object Main {
       println(configMap.map {
         case (key, value: JsString) => s"$key -> ${value.prettyPrint.stripQ}"
         case (_, _: JsArray) => ""
-        case (k, v) => s"$k -> $v"
+        case (k, v) => s"$YELLOW$k$RESET -> $GREEN$v$RESET"
       }.mkString("\n"))
       System.exit(0)
     }
