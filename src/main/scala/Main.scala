@@ -14,6 +14,7 @@ import scala.io.StdIn.readLine
 import scala.jdk.CollectionConverters._
 import scala.language.{implicitConversions, reflectiveCalls}
 import scala.util.control.Breaks._
+import scala.util.matching.Regex
 
 // CLI Syntax constructor
 
@@ -36,7 +37,7 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
   }
 
   val search = new Subcommand("search", "s") {
-    val broadcastAddress = opt[String]("broadcast-address", 'b', required = false) // TODO
+    val broadcastAddress = opt[String]("broadcast-address", 'b', required = false)
     helpFormatter = new ScallopHelpFormatter {
       override def formatHelp(s: Scallop, subcommandPrefix: String): String =
         s"""$BOLD${WHITE}Command:$RESET$CYAN search
@@ -52,9 +53,9 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
     }
   }
   val ac = new Subcommand("ac") {
-    val device = opt[String]("device", 'd', required = false) // TODO
     val prop = trailArg[String]("property", required = false)
     val value = trailArg[String]("value", required = false)
+    val device = opt[String]("device", required = false)
     helpFormatter = new ScallopHelpFormatter {
       override def formatHelp(s: Scallop, subcommandPrefix: String): String = // TODO
         s"""$BOLD${WHITE}Command:$RESET$CYAN ac
@@ -271,7 +272,7 @@ object Main {
 
   // CLI functions
 
-  def search(config: JsObject): Unit = {
+  def search(config: JsObject, ba: ScallopOption[String]): Unit = {
     if (config.fields.contains("devices")) {
       print(s"${YELLOW}Warning:$RESET there are previously bound devices. Do you want to overwrite them? (y/N) ")
       val resp = readLine()
@@ -280,8 +281,12 @@ object Main {
         System.exit(0)
       }
     }
-    var bcAddr = "";
-    if (!config.fields.contains("broadcastAddress") || config.fields("broadcastAddress").prettyPrint.stripQ == "default") {
+    var bcAddr = ""
+    if (ba.getOrElse("") != "") {
+      val bAddr = ba.getOrElse("")
+      val patt = new Regex("\\b(?:(?:2(?:[0-4][0-9]|5[0-5])|[0-1]?[0-9]?[0-9])\\.){3}(?:(?:2([0-4][0-9]|5[0-5])|[0-1]?[0-9]?[0-9]))\\b", "gi")
+      if (patt.matches(bAddr)) bcAddr = bAddr else printErr("Invalid IP entered.")
+    } else if (!config.fields.contains("broadcastAddress") || config.fields("broadcastAddress").prettyPrint.stripQ == "default") {
       println(s"Searching for default broadcast address...\n(Alternatively, you can set the broadcast address with ${CYAN}scli config broadcast <ip>$RESET)\n")
       val bc = getDefaultBroadcast.getOrElse("")
       if (bc.isEmpty) {
@@ -343,7 +348,7 @@ object Main {
       println("Setting the device as default...")
       binds(0) = binds(0) + ("default" -> "true")
     } else {
-      println(s"${YELLOW}Warning:$RESET Found multiple devices. To use the shorthand command (without specifying a device), use: scli config default <id>")
+      println(s"${YELLOW}Warning:$RESET Found multiple devices. To use the shorthand command (without specifying a device), use:$CYAN scli config default <id>$RESET")
     }
     val pw = new PrintWriter(new File("config.json"))
     val newConfig = JsObject(config.fields + ("devices" -> binds.toJson))
@@ -363,27 +368,104 @@ object Main {
     case "light" => "Lig"
     case "air" => "Air"
     case "health" => "Health"
-    case "test" => "RoomWid"
   }
 
-  def getValue(value: ScallopOption[String]): Int = value.getOrElse("") match {
-    case "on" => 1
-    case "off" => 0
-    case "auto" => 0
-    case "cool" => 1
-    case "dry" => 2
-    case "fan" => 3
-    case "heat" => 4
-    case "celsius" => 0
-    case "fahrenheit" => 1
-    case "low" => 1
-    case "medium" => 3
-    case "high" => 5
+  def getValue(propOpt: ScallopOption[String], valueOpt: ScallopOption[String]): Int = {
+    val prop = propOpt.getOrElse("")
+    val value = valueOpt.getOrElse("")
+    prop match {
+      case "power" | "light" | "air" | "health" | "turbo" => value match {
+        case "on" => 1
+        case "off" => 0
+      }
+      case "mode" => value match {
+        case "auto" => 0
+        case "cool" => 1
+        case "dry" => 2
+        case "fan" => 3
+        case "heat" => 4
+      }
+      case "temp-unit" => value match {
+        case "celsius" => 0
+        case "fahrenheit" => 1
+      }
+      case "fan" => value match {
+        case "auto" => 0
+        case "low" => 1
+        case "medium" => 3
+        case "high" => 5
+      }
+    }
   }
 
-  def ac(config: JsObject, prop: ScallopOption[String], value: ScallopOption[String]): Unit = {
-    val device = config.fields("devices").convertTo[Array[Map[String, String]]].filter(p => p("default") == "true")(0)
+  def getPrintableValue(prop: String, value: Int): String = {
+    prop match {
+      case "Pow" | "Lig" | "Air" | "Health" | "Tur" => value match {
+        case 1 => "on"
+        case 0 => "off"
+      }
+      case "Mod" => value match {
+        case 0 => "auto"
+        case 1 => "cool"
+        case 2 => "dry"
+        case 3 => "fan"
+        case 4 => "heat"
+      }
+      case "TemUn" => value match {
+        case 0 => "°C"
+        case 1 => "°F"
+      }
+      case "WdSpd" => value match {
+        case 0 => "auto"
+        case 1 => "low"
+        case 3 => "medium"
+        case 5 => "high"
+      }
+      case "SetTem" => value.toString
+    }
+  }
+
+  def ac(config: JsObject, prop: ScallopOption[String], value: ScallopOption[String], deviceFlag: ScallopOption[String]): Unit = {
+    var device: Map[String, String] = Map()
+    if (deviceFlag.getOrElse("") != "") {
+      try {
+        device = config.fields("devices").convertTo[Array[Map[String, String]]].filter(p => p("incId") == deviceFlag.getOrElse(""))(0)
+      } catch {
+        case _: IndexOutOfBoundsException => printErr(s"Device not found. Run$CYAN scli devices list$RESET for available devices.")
+      }
+    } else {
+      device = config.fields("devices").convertTo[Array[Map[String, String]]].filter(p => p("default") == "true")(0)
+    }
     var setMode = false
+    if (!prop.isDefined) {
+      val pack = s"""{"cols":["Pow","SetTem","Mod","WdSpd","TemUn", "Air","Tur","Health","Lig"], "mac":"${device("id")}","t":"status"}"""
+      val pack_encrypted = encrypt(pack, device("key"))
+      val request = s"""{"cid":"app","i":0,"pack":"$pack_encrypted","t":"pack","tcid":"${device("id")}","uid":0}"""
+      val recv = sendData(device("ip"), 7000, request.getBytes)
+      val jsonRecv = JsonParser(new String(recv.getData, 0, recv.getLength))
+      val mapRecv = jsonRecv.convertTo[Map[String, JsValue]]
+      if (mapRecv("t").toString == """"pack"""") {
+        val decrypted = decrypt(mapRecv("pack").toString().stripQ, device("key"))
+        val jsonDecrypted = JsonParser(new String(decrypted, 0, decrypted.length))
+        val mapDecrypted = jsonDecrypted.convertTo[Map[String, JsValue]]
+        val dat = mapDecrypted("dat").convertTo[Array[Int]]
+        val cols = mapDecrypted("cols").convertTo[Array[String]]
+        val out =
+          s"""${WHITE}Name: $YELLOW${device("id")}$RESET
+             |---------------------
+             |${YELLOW}Power:  $GREEN${getPrintableValue(cols(0), dat(0))}$RESET
+             |${YELLOW}Mode:   $GREEN${getPrintableValue(cols(2), dat(2))}$RESET
+             |${YELLOW}Temp:   $GREEN${getPrintableValue(cols(1), dat(1))} ${getPrintableValue(cols(4), dat(4))}$RESET
+             |${YELLOW}Fan:    $GREEN${getPrintableValue(cols(3), dat(3))}$RESET
+             |${YELLOW}Turbo:  $GREEN${getPrintableValue(cols(6), dat(6))}$RESET
+             |${YELLOW}Air:    $GREEN${getPrintableValue(cols(5), dat(5))}$RESET
+             |${YELLOW}Health: $GREEN${getPrintableValue(cols(7), dat(7))}$RESET
+             |${YELLOW}Light:  $GREEN${getPrintableValue(cols(8), dat(8))}$RESET
+             |""".stripMargin
+        println(out)
+      }
+      System.exit(0)
+    }
     if (value.isDefined) setMode = true
     val param = getParam(prop)
     var pack: String = ""
@@ -397,7 +479,7 @@ object Main {
             printErr("Enter a number for temperature.")
         }
       } else {
-        numValue = getValue(value)
+        numValue = getValue(prop, value)
       }
       pack = s"""{"opt":["$param"],"p":[$numValue],"t":"cmd"}"""
     } else {
@@ -452,9 +534,9 @@ object Main {
     val value = valueOpt.getOrElse("")
     if (command == "list") {
       devices.foreach(d => {
-        println(s"ID: ${d("incId")}\n------------------")
+        println(s"${GREEN}ID: ${d("incId")}$RESET\n------------------")
         println(d filter (e => e._1 != "incId") map {
-          case (key, value) => s"$key -> $value"
+          case (key, value) => s"$YELLOW$key -> $GREEN$value$RESET"
         } mkString "\n")
         println()
       })
@@ -497,9 +579,9 @@ object Main {
         configObject = new JsObject(Map())
     }
 
-    if (conf.subcommand.contains(conf.search)) search(configObject)
+    if (conf.subcommand.contains(conf.search)) search(configObject, conf.search.broadcastAddress)
 
-    if (conf.subcommand.contains(conf.ac)) ac(configObject, conf.ac.prop, conf.ac.value)
+    if (conf.subcommand.contains(conf.ac)) ac(configObject, conf.ac.prop, conf.ac.value, conf.ac.device)
 
     if (conf.subcommand.contains(conf.config)) config(configObject, conf.config.entry, conf.config.value)
 

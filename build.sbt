@@ -1,5 +1,7 @@
 name := "sinclair-cli"
 
+name in Universal := "scli"
+
 maintainer := "bmk@jelszo.co"
 
 version := "0.1"
