@@ -369,6 +369,9 @@ object Main {
     case "light" => "Lig"
     case "air" => "Air"
     case "health" => "Health"
+    case _ =>
+      printErr(s"Invalid property entered (${prop.getOrElse("")}).")
+      ""
   }
 
   def getValue(propOpt: ScallopOption[String], valueOpt: ScallopOption[String]): Int = {
@@ -378,6 +381,8 @@ object Main {
       case "power" | "light" | "air" | "health" | "turbo" => value match {
         case "on" => 1
         case "off" => 0
+        case _ => printErr(s"Invalid value entered ($value).")
+          0
       }
       case "mode" => value match {
         case "auto" => 0
@@ -385,16 +390,22 @@ object Main {
         case "dry" => 2
         case "fan" => 3
         case "heat" => 4
+        case _ => printErr(s"Invalid value entered ($value).")
+          0
       }
       case "temp-unit" => value match {
         case "celsius" => 0
         case "fahrenheit" => 1
+        case _ => printErr(s"Invalid value entered ($value).")
+          0
       }
       case "fan" => value match {
         case "auto" => 0
         case "low" => 1
         case "medium" => 3
         case "high" => 5
+        case _ => printErr(s"Invalid value entered ($value)")
+          0
       }
     }
   }
@@ -496,7 +507,15 @@ object Main {
       val decrypted = decrypt(mapRecv("pack").toString().stripQ, device("key"))
       val jsonDecrypted = JsonParser(new String(decrypted, 0, decrypted.length))
       val mapDecrypted = jsonDecrypted.convertTo[Map[String, JsValue]]
-      println(mapDecrypted) // TODO print output & error handling
+      if (setMode) {
+        val dat = mapDecrypted("val").convertTo[Array[Int]]
+        val opt = mapDecrypted("opt").convertTo[Array[String]]
+        println(s"Set $YELLOW${prop.getOrElse("")}$RESET to $GREEN${getPrintableValue(opt(0), dat(0))}$RESET.")
+      } else {
+        val dat = mapDecrypted("dat").convertTo[Array[Int]]
+        val cols = mapDecrypted("cols").convertTo[Array[String]]
+        println(s"$YELLOW${prop.getOrElse("")}$RESET: $GREEN${getPrintableValue(cols(0), dat(0))}")
+      }
     }
   }
 
