@@ -1,11 +1,10 @@
-name := "sinclair-cli"
-
-name in Universal := "scli"
+name := "scli"
+packageSummary := "scli"
 
 maintainer := "bmk@jelszo.co"
+packageDescription := "A Scala CLI application for controlling Sinclair ACs."
 
 version := "0.1"
-
 scalaVersion := "2.13.3"
 
 scalacOptions ++= Seq(
@@ -20,3 +19,5 @@ libraryDependencies ++= Seq(
 )
 
 enablePlugins(JavaAppPackaging)
+enablePlugins(UniversalPlugin)
+enablePlugins(WindowsPlugin)

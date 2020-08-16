@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/sinclair-cli.iml" filepath="$PROJECT_DIR$/.idea/modules/sinclair-cli.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/sinclair-cli-build.iml" filepath="$PROJECT_DIR$/.idea/modules/sinclair-cli-build.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scli.iml" filepath="$PROJECT_DIR$/.idea/modules/scli.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scli-build.iml" filepath="$PROJECT_DIR$/.idea/modules/scli-build.iml" />
     </modules>
   </component>
 </project>
