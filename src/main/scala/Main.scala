@@ -514,7 +514,7 @@ object Main {
       } else {
         val dat = mapDecrypted("dat").convertTo[Array[Int]]
         val cols = mapDecrypted("cols").convertTo[Array[String]]
-        println(s"$YELLOW${prop.getOrElse("")}$RESET: $GREEN${getPrintableValue(cols(0), dat(0))}")
+        println(s"$YELLOW${prop.getOrElse("")}$RESET: $GREEN${getPrintableValue(cols(0), dat(0))}$RESET")
       }
     }
   }
