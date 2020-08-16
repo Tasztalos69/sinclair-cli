@@ -9,13 +9,15 @@ config.json
 .history/
 .lib/
 dist/*
-target/
 lib_managed/
 src_managed/
 project/boot/
+project/target/
+project/project/target
 project/plugins/project/
 src/test/
 
-# Releases
-!/target/universal/*
-!/target/windows/*
+# Target
+target/scala-2.13/
+target/streams/
+target/universal/
