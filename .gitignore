@@ -18,6 +18,4 @@ project/plugins/project/
 src/test/
 
 # Target
-target/scala-2.13/
-target/streams/
-target/universal/
+target/
