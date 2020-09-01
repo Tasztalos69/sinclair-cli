@@ -6,7 +6,7 @@
 
 ## About
 
-This project is based on [tomikaa87's repo](https://github.com/tomikaa87/gree-remote), I just implemented the code in Scala, and wrote a friendly user interface around it.
+This project is based on [tomikaa87's repo](https://github.com/tomikaa87/gree-remote), I just implemented the code in Scala, and wrote a CLI around it.
 
 
 
