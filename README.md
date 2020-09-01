@@ -18,7 +18,7 @@ This project is based on [tomikaa87's repo](https://github.com/tomikaa87/gree-re
   git clone https://github.com/Tasztalos69/sinclair-cli.git
   ```
 * **Stage with [sbt](https://www.scala-sbt.org/)**<br/>
-  *The stage command comes from [sbt-native-packager](https://github.com/sbt/sbt-native-packager)*
+  *The stage command comes from [sbt-native-packager](https://github.com/sbt/sbt-native-packager).*
   
   ```bash
   sbt stage
